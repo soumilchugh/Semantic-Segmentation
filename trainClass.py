@@ -26,9 +26,10 @@ class train(Data):
 		for i in range(numberOfBatches):
 			batch_data = self.sess.run(batch)
 			_, loss = self.sess.run([self.optimizer,self.error], feed_dict={self.model.input:self.data.getBatchData(batch_data),self.model.output:self.data.getBatchLabels(batch_data)})
-			trainingErrorList.append((loss))
+			trainingErrorList.append(loss)
 			merged_summary = self.sess.run(self.merged_summary_operation,feed_dict={self.model.input:self.data.getBatchData(batch_data),self.model.output:self.data.getBatchLabels(batch_data)})
 			summary_writer.add_summary(merged_summary,epoch)
+			print (loss)
 		return np.average(trainingErrorList)
 
 	def validation(self, epoch, dataset,size, sizeOfBatch,numberOfBatches,summary_writer):

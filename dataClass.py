@@ -13,13 +13,8 @@ class Data(object):
 	def __init__(self,filePath,jsonPath):
 		self.filePath = filePath
 		self.jsonPath = jsonPath
-		self.trainXLabels = list()
-		self.trainYLabels = list()
-		self.trainWidthLabels = list()
-		self.trainHeightLabels = list()
 		self.trainPath = list()
 		self.Dictdata = defaultdict(dict)
-		self.oneHotEncodedData = None
 		self.train_dataset = None
 		self.test_dataset = None
 		self.val_dataset = None
@@ -38,42 +33,20 @@ class Data(object):
 			name = str(os.path.basename(filename));
 			my_path = file.absolute().as_posix()
 			if (name + ".jpg") in self.Dictdata:
-				if "pos" in name and "Bazen" not in name:
+				if "Dan" not in name:
 					self.trainPath.append(str(my_path))
-					boundaryPoints = self.Dictdata[name + ".jpg"]['BoundaryPoints']
-					newBoundaryPoints = []
-					for item in boundaryPoints:
-						newBoundaryPoints.append((int(item[0]*320),int(item[1]*240)))
-					x,y,w,h = cv2.boundingRect(np.array(newBoundaryPoints))
-					self.trainXLabels.append(round(((x - 5))/320,2))
-					self.trainYLabels.append(round(((y - 5))/240,2))
-					self.trainWidthLabels.append(round(((x+w + 5))/320,2))
-					self.trainHeightLabels.append(round(((y+h + 5))/240,2))
-		print (np.array(self.trainXLabels).shape)
-		self.trainXLabels = np.array(self.trainXLabels)
-		self.trainYLabels = np.array(self.trainYLabels)
-		self.trainWidthLabels = np.array(self.trainWidthLabels)
-		self.trainHeightLabels = np.array(self.trainHeightLabels)
-
-	def convertToOneHotEncoding(self):
-		self.oneHotEncodedData = np.zeros((self.trainXLabels.shape[0], 4))
-		for item in range(0, self.trainXLabels.shape[0]):
-			self.oneHotEncodedData [item][0] = (self.trainXLabels[item])
-			self.oneHotEncodedData [item][1] = (self.trainYLabels[item])
-			self.oneHotEncodedData [item][2] = (self.trainWidthLabels[item])
-			self.oneHotEncodedData [item][3] = (self.trainHeightLabels[item])
-		return self.oneHotEncodedData
+		return np.array(self.trainPath)
 
 	def createTensorflowDatasets(self,trainSize, validationSize, testSize):
 		PathDataset = tf.data.Dataset.from_tensor_slices(self.trainPath)
-		LabelsDataset = tf.data.Dataset.from_tensor_slices(self.oneHotEncodedData)
-		fullDataset = tf.data.Dataset.zip((PathDataset, LabelsDataset))
-		self.train_size = int(trainSize*self.oneHotEncodedData.shape[0])
-		self.val_size = int(validationSize*self.oneHotEncodedData.shape[0])
-		self.test_size  = int(testSize*self.oneHotEncodedData.shape[0])
-		fullDataset = fullDataset.shuffle(self.oneHotEncodedData.shape[0])
-		self.train_dataset = fullDataset.take(self.train_size)
-		test_dataset = fullDataset.skip(self.train_size)
+		self.trainPath = np.array(self.trainPath)
+		#fullDataset = tf.data.Dataset.zip((PathDataset, PathDataset))
+		self.train_size = int(trainSize*self.trainPath.shape[0])
+		self.val_size = int(validationSize*self.trainPath.shape[0])
+		self.test_size  = int(testSize*self.trainPath.shape[0])
+		PathDataset.shuffle(self.trainPath.shape[0])
+		self.train_dataset = PathDataset.take(self.train_size)
+		test_dataset = PathDataset.skip(self.train_size)
 		self.val_dataset = test_dataset.skip(self.val_size)
 		self.test_dataset = test_dataset.take(self.test_size)
 		return self.train_dataset, self.val_dataset, self.test_dataset
@@ -85,7 +58,7 @@ class Data(object):
 
 	def getBatchData(self, batch):
 		finalData = list()
-		for image in (batch[0]):
+		for image in (batch):
 			image_reader = cv2.imread(image.decode("utf-8"),0)
 			normalised_image = image_reader.astype(np.float)/255.0
 			normalised_image = np.expand_dims(normalised_image, axis=2)
@@ -94,8 +67,26 @@ class Data(object):
 
 	def getBatchLabels(self,batch):
 		finalData = list()
-		for label in (batch[1]):
-			finalData.append(label)
+		for image in (batch):
+			filename, file_extension = os.path.splitext(image.decode("utf-8"))
+			name = str(os.path.basename(filename));
+			center_x =  self.Dictdata[name + ".jpg"]['CornealReflections']['CornealX']
+			center_y = self.Dictdata[name + ".jpg"]['CornealReflections']['CornealY']
+			labelList = list()
+
+			for i,center in enumerate(center_x):
+				mask = np.zeros((240, 320))
+				
+				if center != -1: 
+					x = int(center_x[i]*320)
+					y = int(center_y[i]*240)
+					cv2.circle(mask,(x,y),4,(255,255,255),-1)
+					mask = mask.astype(np.float)/255.0
+				
+				mask = np.expand_dims(mask, axis=2)
+				labelList.append(mask)
+
+			finalData.append(np.concatenate(labelList,axis=2))
 		return finalData
 
 	def add_variable_summary(self,tf_variable, summary_name):
